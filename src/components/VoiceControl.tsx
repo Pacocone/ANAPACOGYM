@@ -1,32 +1,32 @@
 "use client";
 
 import { useVoice } from "@/lib/hooks/useVoice";
-import { useStore } from "@/lib/store";
+import { useStore, storeActions } from "@/lib/store";
 import { Mic, MicOff, X, Check, RotateCcw, Volume2, VolumeX } from "lucide-react";
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { ParsedCommand } from "@/lib/voiceParser";
 
 export function VoiceControl() {
-    const { store, addExerciseToActive, addSetToEntry, undoLastSet, incrementCounter, finishWorkout, updateWorkoutName, updateUser, startWorkout } = useStore();
+    const { store } = useStore();
     const [showModal, setShowModal] = useState(false);
     const [pendingCommand, setPendingCommand] = useState<ParsedCommand | null>(null);
 
     const isAudioMode = store.user.audioFeedbackEnabled ?? false;
     const isContinuous = store.user.voiceEnabled ?? false;
 
-    const setIsAudioMode = (val: boolean) => updateUser({ ...store.user, audioFeedbackEnabled: val });
-    const setIsContinuous = (val: boolean) => updateUser({ ...store.user, voiceEnabled: val });
+    const setIsAudioMode = (val: boolean) => storeActions.updateUser({ ...store.user, audioFeedbackEnabled: val });
+    const setIsContinuous = (val: boolean) => storeActions.updateUser({ ...store.user, voiceEnabled: val });
 
     const executeCommand = useCallback((cmd: ParsedCommand) => {
+        // Crucial: Use storeActions directly to bypass any closure staleness
         switch (cmd.intent) {
             case "ADD_EXERCISE":
                 if (!store.activeWorkout) {
-                    startWorkout("Entrenamiento Voz");
-                    // Defer exercise addition slightly to allow workout start to propagate
-                    setTimeout(() => addExerciseToActive(cmd.params.exerciseId, cmd.params.exerciseName), 200);
+                    storeActions.startWorkout("Entrenamiento Voz");
+                    setTimeout(() => storeActions.addExerciseToActive(cmd.params.exerciseId, cmd.params.exerciseName), 200);
                 } else {
-                    addExerciseToActive(cmd.params.exerciseId, cmd.params.exerciseName);
+                    storeActions.addExerciseToActive(cmd.params.exerciseId, cmd.params.exerciseName);
                 }
                 if (isAudioMode) speak(`Añadido ${cmd.params.exerciseName}`);
                 break;
@@ -34,35 +34,34 @@ export function VoiceControl() {
                 if (store.activeWorkout?.entries.length) {
                     const entries = store.activeWorkout.entries;
                     const lastEntry = entries[entries.length - 1];
-                    addSetToEntry(lastEntry.id, cmd.params);
+                    storeActions.addSetToEntry(lastEntry.id, cmd.params);
                     if (isAudioMode) speak(`Registrado ${cmd.params.reps} por ${cmd.params.weight} kilos`);
                 } else {
                     if (isAudioMode) speak("Dime primero qué ejercicio estás haciendo");
                 }
                 break;
             case "UNDO":
-                undoLastSet();
+                storeActions.undoLastSet();
                 if (isAudioMode) speak("Deshecho");
                 break;
             case "COUNTER":
-                if (!store.activeWorkout) startWorkout("Entrenamiento Voz");
-                incrementCounter(cmd.params.type, cmd.params.count);
+                if (!store.activeWorkout) storeActions.startWorkout("Entrenamiento Voz");
+                storeActions.incrementCounter(cmd.params.type, cmd.params.count);
                 if (isAudioMode) speak(`${cmd.params.count} registrados`);
                 break;
             case "SET_WORKOUT_NAME":
-                updateWorkoutName(cmd.params.name);
+                storeActions.updateWorkoutName(cmd.params.name);
                 if (isAudioMode) speak(`Nombre cambiado a ${cmd.params.name}`);
                 break;
             case "FINISH_WORKOUT":
-                finishWorkout();
+                storeActions.finishWorkout();
                 if (isAudioMode) speak("Entrenamiento guardado");
                 break;
         }
         setPendingCommand(null);
-    }, [store.activeWorkout, isAudioMode, addExerciseToActive, addSetToEntry, undoLastSet, incrementCounter, finishWorkout, updateWorkoutName, startWorkout]);
+    }, [store.activeWorkout, isAudioMode]);
 
     const handleCommand = useCallback((command: ParsedCommand) => {
-        // 1. Voice-based confirmation for a pending command
         if (pendingCommand) {
             if (command.intent === "CONFIRM") {
                 executeCommand(pendingCommand);
@@ -75,14 +74,10 @@ export function VoiceControl() {
             }
         }
 
-        // 2. Direct execution for non-destructive commands to ensure interaction
         const directIntents = ["START_WORKOUT", "UNDO", "FINISH_WORKOUT", "COUNTER", "ADD_EXERCISE", "ADD_SET"];
 
         if (directIntents.includes(command.intent)) {
-            // Execute immediately to avoid "app does nothing" perception
             executeCommand(command);
-
-            // Still set it as pending visually for a moment so the user sees what happened
             setPendingCommand(command);
             setTimeout(() => setPendingCommand(null), 3000);
             return;
@@ -191,7 +186,7 @@ export function VoiceControl() {
                                     {pendingCommand.intent === "UNDO" && "Última serie deshecha"}
                                     {pendingCommand.intent === "COUNTER" && "Contador actualizado"}
                                 </div>
-                                <button onClick={() => { undoLastSet(); setPendingCommand(null); }} className="w-full py-4 bg-white/5 rounded-2xl font-black uppercase text-xs border border-white/10">Corregir / Deshacer</button>
+                                <button onClick={() => { storeActions.undoLastSet(); setPendingCommand(null); }} className="w-full py-4 bg-white/5 rounded-2xl font-black uppercase text-xs border border-white/10">Corregir / Deshacer</button>
                             </div>
                         )}
                     </div>

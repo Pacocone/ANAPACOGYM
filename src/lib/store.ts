@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { AppStore, Workout, UserProfile, WorkoutEntry } from "./types";
 
 const STORAGE_KEY = "placogym_store";
@@ -16,45 +16,26 @@ const initialStore: AppStore = {
     history: [],
 };
 
-// Safe UUID alternative for insecure contexts (HTTP)
+// Global singleton for the store data to avoid stale closures in hooks
+let globalStore = initialStore;
+let listeners: Array<(store: AppStore) => void> = [];
+
+const notify = () => listeners.forEach(l => l(globalStore));
+
+// Safe UUID alternative
 function generateUUID() {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
-export function useStore() {
-    const [store, setStore] = useState<AppStore>(initialStore);
-    const [isInitialized, setIsInitialized] = useState(false);
-    const [isLogged, setIsLogged] = useState(false);
-
-    useEffect(() => {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        const logged = localStorage.getItem("placogym_logged") === "true";
-        if (saved) {
-            const parsed = JSON.parse(saved);
-            // Handle migration from age to birthday if needed
-            if (parsed.user && typeof parsed.user.age === 'number') {
-                const year = new Date().getFullYear() - parsed.user.age;
-                parsed.user.birthday = `${year}-01-01`;
-                delete parsed.user.age;
-            }
-            setStore(parsed);
-        }
-        setIsLogged(logged);
-        setIsInitialized(true);
-    }, []);
-
-    const save = (newStore: AppStore) => {
-        setStore(newStore);
+// Global actions that work anywhere
+export const storeActions = {
+    save: (newStore: AppStore) => {
+        globalStore = newStore;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(newStore));
-    };
+        notify();
+    },
 
-    const login = (email: string) => {
-        localStorage.setItem("placogym_logged", "true");
-        setIsLogged(true);
-        save({ ...store, user: { ...store.user } }); // Ensure sync
-    };
-
-    const startWorkout = (name: string = "Entrenamiento") => {
+    startWorkout: (name: string = "Entrenamiento") => {
         const newWorkout: Workout = {
             id: generateUUID(),
             name,
@@ -66,29 +47,29 @@ export function useStore() {
             squatsCount: 0,
             absCount: 0,
         };
-        save({ ...store, activeWorkout: newWorkout });
-    };
+        storeActions.save({ ...globalStore, activeWorkout: newWorkout });
+    },
 
-    const addExerciseToActive = (exerciseId: string, exerciseName: string) => {
-        if (!store.activeWorkout) return;
+    addExerciseToActive: (exerciseId: string, exerciseName: string) => {
+        if (!globalStore.activeWorkout) return;
         const newEntry: WorkoutEntry = {
             id: generateUUID(),
             exerciseId,
             exerciseName,
             sets: [],
         };
-        save({
-            ...store,
+        storeActions.save({
+            ...globalStore,
             activeWorkout: {
-                ...store.activeWorkout,
-                entries: [...store.activeWorkout.entries, newEntry],
+                ...globalStore.activeWorkout,
+                entries: [...globalStore.activeWorkout.entries, newEntry],
             },
         });
-    };
+    },
 
-    const addSetToEntry = (entryId: string, data: { weight?: number; reps?: number; durationSeconds?: number; distanceKm?: number }) => {
-        if (!store.activeWorkout) return;
-        const newWorkout = { ...store.activeWorkout };
+    addSetToEntry: (entryId: string, data: { weight?: number; reps?: number; durationSeconds?: number; distanceKm?: number }) => {
+        if (!globalStore.activeWorkout) return;
+        const newWorkout = { ...globalStore.activeWorkout };
         const entry = newWorkout.entries.find((e) => e.id === entryId);
         if (!entry) return;
 
@@ -103,58 +84,20 @@ export function useStore() {
             return sum + e.sets.reduce((esum, s) => esum + ((s.weight || 0) * (s.reps || 1)), 0);
         }, 0);
 
-        save({ ...store, activeWorkout: newWorkout });
-    };
+        storeActions.save({ ...globalStore, activeWorkout: newWorkout });
+    },
 
-    const deleteWorkout = (id: string) => {
-        save({
-            ...store,
-            history: store.history.filter(w => w.id !== id)
+    updateWorkoutName: (name: string) => {
+        if (!globalStore.activeWorkout) return;
+        storeActions.save({
+            ...globalStore,
+            activeWorkout: { ...globalStore.activeWorkout, name },
         });
-    };
+    },
 
-    const finishWorkout = () => {
-        if (!store.activeWorkout) return;
-        const finishedWorkout = {
-            ...store.activeWorkout,
-            endAt: new Date().toISOString(),
-        };
-        save({
-            ...store,
-            activeWorkout: null,
-            history: [finishedWorkout, ...store.history],
-        });
-    };
-
-    const discardActiveWorkout = () => {
-        save({
-            ...store,
-            activeWorkout: null
-        });
-    };
-
-    const getLastSessionData = (exerciseId: string) => {
-        for (const workout of store.history) {
-            const entry = workout.entries.find(e => e.exerciseId === exerciseId);
-            if (entry && entry.sets.length > 0) {
-                return entry.sets[entry.sets.length - 1]; // Return last set data
-            }
-        }
-        return null;
-    };
-
-    const updateWorkoutName = (name: string) => {
-        if (!store.activeWorkout) return;
-        save({
-            ...store,
-            activeWorkout: { ...store.activeWorkout, name },
-        });
-    };
-
-    const undoLastSet = () => {
-        if (!store.activeWorkout || store.activeWorkout.entries.length === 0) return;
-        const newWorkout = { ...store.activeWorkout };
-        // Find last entry with sets
+    undoLastSet: () => {
+        if (!globalStore.activeWorkout || globalStore.activeWorkout.entries.length === 0) return;
+        const newWorkout = { ...globalStore.activeWorkout };
         for (let i = newWorkout.entries.length - 1; i >= 0; i--) {
             const entry = newWorkout.entries[i];
             if (entry.sets.length > 0) {
@@ -162,48 +105,81 @@ export function useStore() {
                 break;
             }
         }
-
-        // Recalculate totals
         newWorkout.totalSets = newWorkout.entries.reduce((sum, e) => sum + e.sets.length, 0);
         newWorkout.totalVolume = newWorkout.entries.reduce((sum, e) => {
             return sum + e.sets.reduce((esum, s) => esum + ((s.weight || 0) * (s.reps || 1)), 0);
         }, 0);
+        storeActions.save({ ...globalStore, activeWorkout: newWorkout });
+    },
 
-        save({ ...store, activeWorkout: newWorkout });
-    };
+    finishWorkout: () => {
+        if (!globalStore.activeWorkout) return;
+        const finishedWorkout = {
+            ...globalStore.activeWorkout,
+            endAt: new Date().toISOString(),
+        };
+        storeActions.save({
+            ...globalStore,
+            activeWorkout: null,
+            history: [finishedWorkout, ...globalStore.history],
+        });
+    },
 
-    const incrementCounter = (type: "squats" | "abs", count: number) => {
-        if (!store.activeWorkout) return;
-        save({
-            ...store,
+    discardActiveWorkout: () => {
+        storeActions.save({ ...globalStore, activeWorkout: null });
+    },
+
+    updateUser: (user: UserProfile) => {
+        storeActions.save({ ...globalStore, user });
+    },
+
+    incrementCounter: (type: "squats" | "abs", count: number) => {
+        if (!globalStore.activeWorkout) return;
+        storeActions.save({
+            ...globalStore,
             activeWorkout: {
-                ...store.activeWorkout,
-                [type === "squats" ? "squatsCount" : "absCount"]: (store.activeWorkout[type === "squats" ? "squatsCount" : "absCount"] || 0) + count
+                ...globalStore.activeWorkout,
+                [type === "squats" ? "squatsCount" : "absCount"]: (globalStore.activeWorkout[type === "squats" ? "squatsCount" : "absCount"] || 0) + count
             }
         });
+    },
+};
+
+export function useStore() {
+    const [store, setLocalStore] = useState<AppStore>(globalStore);
+    const [isInitialized, setIsInitialized] = useState(false);
+    const [isLogged, setIsLogged] = useState(false);
+
+    useEffect(() => {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        const logged = localStorage.getItem("placogym_logged") === "true";
+        if (saved) {
+            globalStore = JSON.parse(saved);
+            setLocalStore(globalStore);
+        }
+        setIsLogged(logged);
+        setIsInitialized(true);
+
+        const listener = (newStore: AppStore) => setLocalStore(newStore);
+        listeners.push(listener);
+        return () => {
+            listeners = listeners.filter(l => l !== listener);
+        };
+    }, []);
+
+    const login = (email: string) => {
+        localStorage.setItem("placogym_logged", "true");
+        setIsLogged(true);
     };
 
-    const repeatWorkout = (workoutId: string) => {
-        const sourceWorkout = store.history.find((w) => w.id === workoutId);
-        if (!sourceWorkout) return;
-
-        const newWorkout: Workout = {
-            id: generateUUID(),
-            name: sourceWorkout.name,
-            startAt: new Date().toISOString(),
-            warmupSeconds: 0,
-            entries: sourceWorkout.entries.map((entry) => ({
-                id: generateUUID(),
-                exerciseId: entry.exerciseId,
-                exerciseName: entry.exerciseName,
-                sets: [],
-            })),
-            totalVolume: 0,
-            totalSets: 0,
-            squatsCount: 0,
-            absCount: 0,
-        };
-        save({ ...store, activeWorkout: newWorkout });
+    const getLastSessionData = (exerciseId: string) => {
+        for (const workout of store.history) {
+            const entry = workout.entries.find(e => e.exerciseId === exerciseId);
+            if (entry && entry.sets.length > 0) {
+                return entry.sets[entry.sets.length - 1];
+            }
+        }
+        return null;
     };
 
     return {
@@ -211,17 +187,7 @@ export function useStore() {
         isInitialized,
         isLogged,
         login,
-        startWorkout,
-        updateWorkoutName,
-        repeatWorkout,
-        addExerciseToActive,
-        addSetToEntry,
-        undoLastSet,
-        incrementCounter,
-        deleteWorkout,
-        discardActiveWorkout,
-        finishWorkout,
         getLastSessionData,
-        updateUser: (user: UserProfile) => save({ ...store, user }),
+        ...storeActions
     };
 }
