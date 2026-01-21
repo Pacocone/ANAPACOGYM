@@ -29,7 +29,7 @@ export function VoiceControl() {
         }
     }, [isAudioMode]);
 
-    const { isListening, isProcessing, lastTranscript, error, notSupported, startListening, stopListening, speak } = useVoice(handleCommand, { continuous: isContinuous });
+    const { isListening, isProcessing, lastTranscript, error, notSupported, isPWAOnIOS, startListening, stopListening, speak } = useVoice(handleCommand, { continuous: isContinuous });
 
     const executeCommand = (cmd: ParsedCommand) => {
         switch (cmd.intent) {
@@ -111,21 +111,42 @@ export function VoiceControl() {
                     </div>
 
                     <div className="flex-1 flex flex-col items-center justify-center text-center gap-8">
-                        <div className={cn(
-                            "w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500",
-                            isListening ? "bg-shred-neon shadow-[0_0_50px_rgba(159,255,0,0.5)] scale-110" : "bg-white/5"
-                        )}>
-                            {isListening ? <Mic size={48} className="text-black animate-pulse" /> : <MicOff size={48} className="text-white/20" />}
-                        </div>
+                        {isPWAOnIOS ? (
+                            <div className="shred-card border-amber-500/50 p-8 max-w-xs">
+                                <div className="text-amber-500 mb-4 flex justify-center"><VolumeX size={48} /></div>
+                                <h3 className="text-xl font-black uppercase mb-2">Limitación de Apple</h3>
+                                <p className="text-sm text-white/60">
+                                    El sistema de voz de iOS no funciona en modo PWA (icono escritorio).
+                                    <br /><br />
+                                    Para usar la voz, abre **Safari** directamente y entra en la web.
+                                </p>
+                            </div>
+                        ) : (
+                            <>
+                                <div className={cn(
+                                    "w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500",
+                                    isListening ? "bg-shred-neon shadow-[0_0_50px_rgba(159,255,0,0.5)] scale-110" : "bg-white/5",
+                                    error && "bg-red-500/20 shadow-[0_0_30px_rgba(239,68,68,0.3)]"
+                                )}>
+                                    {isListening ? <Mic size={48} className="text-black animate-pulse" /> : <MicOff size={48} className={cn("text-white/20", error && "text-red-500")} />}
+                                </div>
 
-                        <div className="space-y-4 max-w-sm">
-                            <h2 className="text-2xl font-black uppercase tracking-tight">
-                                {isListening ? "Escuchando..." : isProcessing ? "Procesando..." : "Listo para hablar"}
-                            </h2>
-                            <p className="text-lg font-bold text-white/60 italic min-h-[3rem]">
-                                "{lastTranscript || "Pulsa abajo para hablar..."}"
-                            </p>
-                        </div>
+                                <div className="space-y-4 max-w-sm">
+                                    <h2 className="text-2xl font-black uppercase tracking-tight">
+                                        {error ? "Fallo de Voz" : isListening ? "Escuchando..." : isProcessing ? "Procesando..." : "Listo para hablar"}
+                                    </h2>
+                                    {error ? (
+                                        <div className="text-red-500 font-bold uppercase tracking-widest text-xs px-4 py-2 bg-red-500/10 rounded-lg">
+                                            Error: {error}
+                                        </div>
+                                    ) : (
+                                        <p className="text-lg font-bold text-white/60 italic min-h-[3rem]">
+                                            "{lastTranscript || "Pulsa abajo para hablar..."}"
+                                        </p>
+                                    )}
+                                </div>
+                            </>
+                        )}
 
                         {pendingCommand && pendingCommand.intent !== "UNKNOWN" && (
                             <div className="shred-card w-full border-shred-neon/50 animate-in slide-in-from-bottom duration-300">

@@ -9,6 +9,7 @@ interface VoiceState {
     lastTranscript: string;
     error: string | null;
     notSupported: boolean;
+    isPWAOnIOS: boolean;
 }
 
 export function useVoice(onCommand?: (command: ParsedCommand) => void, options: { continuous?: boolean } = {}) {
@@ -18,6 +19,7 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
         lastTranscript: "",
         error: null,
         notSupported: false,
+        isPWAOnIOS: false,
     });
 
     const recognitionRef = useRef<any>(null);
@@ -27,17 +29,27 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
         isContinuousRef.current = options.continuous;
     }, [options.continuous]);
 
+    // Handle PWA detection on iOS
     useEffect(() => {
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+        const isStandalone = (window.navigator as any).standalone || window.matchMedia("(display-mode: standalone)").matches;
 
-        if (!SpeechRecognition) {
+        if (isIOS && isStandalone) {
+            setState(s => ({ ...s, isPWAOnIOS: true, notSupported: true }));
+        } else if (!(window as any).SpeechRecognition && !(window as any).webkitSpeechRecognition) {
             setState(s => ({ ...s, notSupported: true }));
-            return;
         }
+    }, []);
+
+    const initRecognition = useCallback(() => {
+        if (recognitionRef.current) return recognitionRef.current;
+
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) return null;
 
         const recognition = new SpeechRecognition();
         recognition.lang = "es-ES";
-        recognition.continuous = false; // We handle continuity manually for better control
+        recognition.continuous = false;
         recognition.interimResults = true;
 
         recognition.onstart = () => {
@@ -52,23 +64,30 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
 
             setState(s => ({ ...s, lastTranscript: transcript }));
 
-            if (event.results[0].isFinal) {
+            if (event.results[event.resultIndex].isFinal) {
                 const command = VoiceCommandParser.parse(transcript);
                 if (onCommand) onCommand(command);
                 setState(s => ({ ...s, isListening: false, isProcessing: true }));
 
                 setTimeout(() => {
                     setState(s => ({ ...s, isProcessing: false }));
-                    if (isContinuousRef.current) {
-                        recognition.start();
+                    if (isContinuousRef.current && recognitionRef.current) {
+                        try {
+                            recognitionRef.current.start();
+                        } catch (e) {
+                            console.warn("Auto-restart failed", e);
+                        }
                     }
                 }, 800);
             }
         };
 
         recognition.onerror = (event: any) => {
-            console.error("Speech Recognition Error", event.error);
-            setState(s => ({ ...s, isListening: false, error: event.error }));
+            let errorMessage = event.error;
+            if (event.error === "not-allowed") errorMessage = "Permiso de micrófono denegado";
+            if (event.error === "no-speech") errorMessage = "No se detectó voz";
+
+            setState(s => ({ ...s, isListening: false, error: errorMessage }));
         };
 
         recognition.onend = () => {
@@ -76,17 +95,27 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
         };
 
         recognitionRef.current = recognition;
+        return recognition;
     }, [onCommand]);
 
     const startListening = useCallback(() => {
-        if (recognitionRef.current && !state.isListening) {
+        if (state.isPWAOnIOS) {
+            setState(s => ({ ...s, error: "La voz no funciona en modo PWA en iOS. Abre Safari." }));
+            return;
+        }
+
+        const rec = initRecognition();
+        if (rec && !state.isListening) {
             try {
-                recognitionRef.current.start();
+                // iOS requires user gesture for the FIRST start
+                // We ensure this is called from an onClick/onTouchStart
+                rec.start();
             } catch (e) {
                 console.error("Start listening error", e);
+                setState(s => ({ ...s, error: "Error al iniciar micrófono" }));
             }
         }
-    }, [state.isListening]);
+    }, [state.isListening, state.isPWAOnIOS, initRecognition]);
 
     const stopListening = useCallback(() => {
         if (recognitionRef.current && state.isListening) {
@@ -97,12 +126,11 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
     const speak = useCallback((text: string) => {
         if (!window.speechSynthesis) return;
 
-        // Stop previous speeches
         window.speechSynthesis.cancel();
 
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = "es-ES";
-        utterance.rate = 1.0;
+        utterance.rate = 1.1; // Slightly faster for gym context
         utterance.pitch = 1.0;
 
         window.speechSynthesis.speak(utterance);
