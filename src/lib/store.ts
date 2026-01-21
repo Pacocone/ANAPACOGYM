@@ -134,6 +134,36 @@ export const storeActions = {
         storeActions.save({ ...globalStore, user });
     },
 
+    deleteWorkout: (id: string) => {
+        storeActions.save({
+            ...globalStore,
+            history: globalStore.history.filter(w => w.id !== id)
+        });
+    },
+
+    repeatWorkout: (workoutId: string) => {
+        const sourceWorkout = globalStore.history.find((w) => w.id === workoutId);
+        if (!sourceWorkout) return;
+
+        const newWorkout: Workout = {
+            id: generateUUID(),
+            name: sourceWorkout.name,
+            startAt: new Date().toISOString(),
+            warmupSeconds: 0,
+            entries: sourceWorkout.entries.map((entry) => ({
+                id: generateUUID(),
+                exerciseId: entry.exerciseId,
+                exerciseName: entry.exerciseName,
+                sets: [],
+            })),
+            totalVolume: 0,
+            totalSets: 0,
+            squatsCount: 0,
+            absCount: 0,
+        };
+        storeActions.save({ ...globalStore, activeWorkout: newWorkout });
+    },
+
     incrementCounter: (type: "squats" | "abs", count: number) => {
         if (!globalStore.activeWorkout) return;
         storeActions.save({
