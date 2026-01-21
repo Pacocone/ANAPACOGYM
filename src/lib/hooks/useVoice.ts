@@ -87,7 +87,6 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
                             recognitionRef.current.start();
                         } catch (e) {
                             isStartingRef.current = false;
-                            console.warn("Auto-restart failed", e);
                         }
                     }
                 }, 300);
@@ -98,7 +97,6 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
             isStartingRef.current = false;
             let errorMessage = event.error;
 
-            // Ignore 'aborted' error if it's during a normal lifecycle or manual stop
             if (event.error === "aborted") return;
 
             if (event.error === "not-allowed") errorMessage = "Permiso denegado (Ajustes > Privacidad > Micro)";
@@ -123,6 +121,9 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
             return;
         }
 
+        // Reset error on each attempt
+        setState(s => ({ ...s, error: null }));
+
         if (isStartingRef.current || state.isListening) return;
 
         const rec = initRecognition();
@@ -132,8 +133,10 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
                 rec.start();
             } catch (e) {
                 isStartingRef.current = false;
-                if (!(e as any).message?.includes("already started")) {
-                    setState(s => ({ ...s, error: "Error al iniciar micrófono" }));
+                if ((e as any).name === "InvalidStateError" || (e as any).message?.includes("already started")) {
+                    setState(s => ({ ...s, isListening: true, error: null }));
+                } else {
+                    setState(s => ({ ...s, error: "Error de Micro (Recarga la página)" }));
                 }
             }
         }

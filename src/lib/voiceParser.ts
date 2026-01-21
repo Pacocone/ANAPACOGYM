@@ -50,12 +50,17 @@ export class VoiceCommandParser {
         found = EXERCISES.find(ex => ex.searchKeywords.some(k => k.toLowerCase().includes(clean)));
         if (found) return found;
 
-        // 3. Common aliases/short names
+        // 3. Match in category (if user says "pecho", show first chest exercise)
+        found = EXERCISES.find(ex => ex.category.toLowerCase().includes(clean));
+        if (found) return found;
+
+        // 4. Common aliases/short names
         const aliases: Record<string, string> = {
             "banca": "Olympic Flat Bench",
             "prensa": "Leg Press",
             "extensiones": "Leg Extension",
             "curl biceps": "Arm Curl",
+            "cur bicep": "Arm Curl",
             "jalon": "Lat Machine",
             "remo": "Low Row",
             "hombro": "Shoulder Press",

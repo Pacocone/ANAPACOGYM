@@ -2,8 +2,8 @@
 
 import { useVoice } from "@/lib/hooks/useVoice";
 import { useStore, storeActions } from "@/lib/store";
-import { Mic, MicOff, X, Check, RotateCcw, Volume2, VolumeX } from "lucide-react";
-import { useState, useCallback } from "react";
+import { Mic, MicOff, X, RotateCcw, Volume2, VolumeX } from "lucide-react";
+import { useState, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { ParsedCommand } from "@/lib/voiceParser";
 
@@ -12,6 +12,7 @@ export function VoiceControl() {
     const [showModal, setShowModal] = useState(false);
     const [pendingCommand, setPendingCommand] = useState<ParsedCommand | null>(null);
 
+    // Audio state
     const isAudioMode = store.user.audioFeedbackEnabled ?? false;
     const isContinuous = store.user.voiceEnabled ?? false;
 
@@ -19,20 +20,31 @@ export function VoiceControl() {
     const setIsContinuous = (val: boolean) => storeActions.updateUser({ ...store.user, voiceEnabled: val });
 
     const executeCommand = useCallback((cmd: ParsedCommand) => {
-        // Crucial: Use storeActions directly to bypass any closure staleness
+        // CRITICAL: Always use the synchronous getter to avoid stale React state
+        const currentStore = storeActions.getStore();
+
         switch (cmd.intent) {
-            case "ADD_EXERCISE":
-                if (!store.activeWorkout) {
+            case "START_WORKOUT":
+                if (!currentStore.activeWorkout) {
                     storeActions.startWorkout("Entrenamiento Voz");
-                    setTimeout(() => storeActions.addExerciseToActive(cmd.params.exerciseId, cmd.params.exerciseName), 200);
+                    if (isAudioMode) speak("Entrenamiento iniciado");
+                }
+                break;
+
+            case "ADD_EXERCISE":
+                if (!currentStore.activeWorkout) {
+                    storeActions.startWorkout("Entrenamiento Voz");
+                    // Defer exercise addition slightly to allow workout start to propagate to global state
+                    setTimeout(() => storeActions.addExerciseToActive(cmd.params.exerciseId, cmd.params.exerciseName), 150);
                 } else {
                     storeActions.addExerciseToActive(cmd.params.exerciseId, cmd.params.exerciseName);
                 }
-                if (isAudioMode) speak(`Añadido ${cmd.params.exerciseName}`);
+                if (isAudioMode) speak(`He añadido ${cmd.params.exerciseName}`);
                 break;
+
             case "ADD_SET":
-                if (store.activeWorkout?.entries.length) {
-                    const entries = store.activeWorkout.entries;
+                if (currentStore.activeWorkout?.entries.length) {
+                    const entries = currentStore.activeWorkout.entries;
                     const lastEntry = entries[entries.length - 1];
                     storeActions.addSetToEntry(lastEntry.id, cmd.params);
                     if (isAudioMode) speak(`Registrado ${cmd.params.reps} por ${cmd.params.weight} kilos`);
@@ -40,49 +52,51 @@ export function VoiceControl() {
                     if (isAudioMode) speak("Dime primero qué ejercicio estás haciendo");
                 }
                 break;
+
             case "UNDO":
                 storeActions.undoLastSet();
                 if (isAudioMode) speak("Deshecho");
                 break;
+
             case "COUNTER":
-                if (!store.activeWorkout) storeActions.startWorkout("Entrenamiento Voz");
+                if (!currentStore.activeWorkout) storeActions.startWorkout("Entrenamiento Voz");
                 storeActions.incrementCounter(cmd.params.type, cmd.params.count);
                 if (isAudioMode) speak(`${cmd.params.count} registrados`);
                 break;
+
             case "SET_WORKOUT_NAME":
                 storeActions.updateWorkoutName(cmd.params.name);
                 if (isAudioMode) speak(`Nombre cambiado a ${cmd.params.name}`);
                 break;
+
             case "FINISH_WORKOUT":
                 storeActions.finishWorkout();
-                if (isAudioMode) speak("Entrenamiento guardado");
+                if (isAudioMode) speak("Entrenamiento guardado y finalizado");
+                break;
+
+            case "REST":
+                if (isAudioMode) speak("Descanso iniciado");
+                // Potential rest timer trigger here
                 break;
         }
-        setPendingCommand(null);
-    }, [store.activeWorkout, isAudioMode]);
+
+        setPendingCommand(cmd);
+        setTimeout(() => setPendingCommand(null), 4000);
+    }, [isAudioMode]);
+
+    const lastProcessedTextRef = useRef<string>("");
 
     const handleCommand = useCallback((command: ParsedCommand) => {
-        if (pendingCommand) {
-            if (command.intent === "CONFIRM") {
-                executeCommand(pendingCommand);
-                return;
-            }
-            if (command.intent === "REJECT") {
-                setPendingCommand(null);
-                if (isAudioMode) speak("Cancelado");
-                return;
-            }
-        }
+        // Avoid double-processing of the same exact phrase
+        if (command.raw === lastProcessedTextRef.current) return;
+        lastProcessedTextRef.current = command.raw;
 
-        const directIntents = ["START_WORKOUT", "UNDO", "FINISH_WORKOUT", "COUNTER", "ADD_EXERCISE", "ADD_SET"];
+        const directIntents = ["START_WORKOUT", "UNDO", "FINISH_WORKOUT", "COUNTER", "ADD_EXERCISE", "ADD_SET", "SET_WORKOUT_NAME", "REST"];
 
         if (directIntents.includes(command.intent)) {
             executeCommand(command);
-            setPendingCommand(command);
-            setTimeout(() => setPendingCommand(null), 3000);
-            return;
         }
-    }, [pendingCommand, isAudioMode, executeCommand]);
+    }, [executeCommand]);
 
     const { isListening, isProcessing, lastTranscript, error, notSupported, isPWAOnIOS, startListening, stopListening, speak } = useVoice(handleCommand, { continuous: isContinuous });
 
@@ -91,7 +105,9 @@ export function VoiceControl() {
     return (
         <>
             <button
-                onClick={() => setShowModal(true)}
+                onClick={() => {
+                    setShowModal(true);
+                }}
                 className="fixed bottom-24 right-6 w-16 h-16 rounded-full bg-shred-neon text-black flex items-center justify-center shadow-lg shadow-shred-neon/40 animate-bounce active:scale-95 z-50"
             >
                 <Mic size={32} />
@@ -162,9 +178,9 @@ export function VoiceControl() {
                                             <div className="text-left bg-white/5 p-4 rounded-xl border border-white/5">
                                                 <p className="text-[10px] font-black uppercase text-white/40 mb-2">Troubleshooting:</p>
                                                 <ul className="text-[11px] text-white/60 space-y-2 list-disc pl-4">
-                                                    <li>Usa **Safari** (No icono escritorio).</li>
-                                                    <li>Activa **Dictado** en Ajustes.</li>
-                                                    <li>Recarga la página.</li>
+                                                    <li>Usa **Safari** obligatoriamente.</li>
+                                                    <li>Activa **Dictado** en Teclado.</li>
+                                                    <li>Pulsa solo una vez para empezar.</li>
                                                 </ul>
                                             </div>
                                         </div>
@@ -183,28 +199,40 @@ export function VoiceControl() {
                                 <div className="text-xl font-black uppercase mb-4">
                                     {pendingCommand.intent === "ADD_SET" && `Registrado ${pendingCommand.params.reps} x ${pendingCommand.params.weight} kg`}
                                     {pendingCommand.intent === "ADD_EXERCISE" && `Añadido ${pendingCommand.params.exerciseName}`}
-                                    {pendingCommand.intent === "UNDO" && "Última serie deshecha"}
+                                    {pendingCommand.intent === "START_WORKOUT" && "Entrenamiento iniciado"}
+                                    {pendingCommand.intent === "FINISH_WORKOUT" && "Entrenamiento guardado"}
+                                    {pendingCommand.intent === "UNDO" && "Borrado último registro"}
                                     {pendingCommand.intent === "COUNTER" && "Contador actualizado"}
                                 </div>
-                                <button onClick={() => { storeActions.undoLastSet(); setPendingCommand(null); }} className="w-full py-4 bg-white/5 rounded-2xl font-black uppercase text-xs border border-white/10">Corregir / Deshacer</button>
+                                <button onClick={() => { storeActions.undoLastSet(); setPendingCommand(null); }} className="w-full py-4 bg-white/5 rounded-2xl font-black uppercase text-xs border border-white/10 flex items-center justify-center gap-2">
+                                    DESHACER / CORREGIR
+                                </button>
                             </div>
                         )}
                     </div>
 
-                    <div className="pb-10 px-4">
-                        <button
-                            onMouseDown={startListening}
-                            onMouseUp={stopListening}
-                            onTouchStart={startListening}
-                            onTouchEnd={stopListening}
-                            className={cn(
-                                "shred-button-xl transition-all duration-300",
-                                isListening ? "bg-red-500 shadow-red-500/30 scale-95" : "bg-shred-neon text-black shadow-shred-neon/30"
-                            )}
-                        >
-                            {isListening ? "Suelta para procesar" : "Mantén para hablar"}
-                        </button>
-                    </div>
+                    {!isPWAOnIOS && (
+                        <div className="pb-10 px-4">
+                            <button
+                                onMouseDown={() => {
+                                    lastProcessedTextRef.current = "";
+                                    startListening();
+                                }}
+                                onMouseUp={stopListening}
+                                onTouchStart={() => {
+                                    lastProcessedTextRef.current = "";
+                                    startListening();
+                                }}
+                                onTouchEnd={stopListening}
+                                className={cn(
+                                    "shred-button-xl transition-all duration-300",
+                                    isListening ? "bg-red-500 shadow-red-500/30 scale-95" : "bg-shred-neon text-black shadow-shred-neon/30"
+                                )}
+                            >
+                                {isListening ? "Suelta para procesar" : "Mantén para hablar"}
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
         </>

@@ -29,6 +29,7 @@ function generateUUID() {
 
 // Global actions that work anywhere
 export const storeActions = {
+    getStore: () => globalStore,
     save: (newStore: AppStore) => {
         globalStore = newStore;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(newStore));
