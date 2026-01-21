@@ -24,12 +24,16 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
 
     const recognitionRef = useRef<any>(null);
     const isContinuousRef = useRef(options.continuous);
+    const onCommandRef = useRef(onCommand);
 
     useEffect(() => {
         isContinuousRef.current = options.continuous;
     }, [options.continuous]);
 
-    // Handle PWA detection on iOS
+    useEffect(() => {
+        onCommandRef.current = onCommand;
+    }, [onCommand]);
+
     useEffect(() => {
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
         const isStandalone = (window.navigator as any).standalone || window.matchMedia("(display-mode: standalone)").matches;
@@ -57,16 +61,20 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
         };
 
         recognition.onresult = (event: any) => {
-            const transcript = Array.from(event.results)
-                .map((result: any) => result[0])
-                .map((result: any) => result.transcript)
-                .join("");
+            let transcript = "";
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                transcript += event.results[i][0].transcript;
+            }
 
             setState(s => ({ ...s, lastTranscript: transcript }));
 
             if (event.results[event.resultIndex].isFinal) {
-                const command = VoiceCommandParser.parse(transcript);
-                if (onCommand) onCommand(command);
+                const finalTranscript = transcript.trim();
+                if (finalTranscript) {
+                    const command = VoiceCommandParser.parse(finalTranscript);
+                    if (onCommandRef.current) onCommandRef.current(command);
+                }
+
                 setState(s => ({ ...s, isListening: false, isProcessing: true }));
 
                 setTimeout(() => {
@@ -78,7 +86,7 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
                             console.warn("Auto-restart failed", e);
                         }
                     }
-                }, 800);
+                }, 400);
             }
         };
 
@@ -97,7 +105,7 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
 
         recognitionRef.current = recognition;
         return recognition;
-    }, [onCommand]);
+    }, []); // Removed onCommand dependency because we use onCommandRef
 
     const startListening = useCallback(() => {
         if (state.isPWAOnIOS) {
@@ -108,8 +116,6 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
         const rec = initRecognition();
         if (rec && !state.isListening) {
             try {
-                // iOS requires user gesture for the FIRST start
-                // We ensure this is called from an onClick/onTouchStart
                 rec.start();
             } catch (e) {
                 console.error("Start listening error", e);
@@ -131,7 +137,7 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
 
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = "es-ES";
-        utterance.rate = 1.1; // Slightly faster for gym context
+        utterance.rate = 1.1;
         utterance.pitch = 1.0;
 
         window.speechSynthesis.speak(utterance);

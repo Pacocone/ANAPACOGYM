@@ -185,12 +185,13 @@ export function VoiceControl() {
                         {pendingCommand && pendingCommand.intent !== "UNKNOWN" && (
                             <div className="shred-card w-full border-shred-neon/50 animate-in slide-in-from-bottom duration-300">
                                 <div className="text-[10px] uppercase font-black text-shred-neon tracking-widest mb-2">Comando Interpretado</div>
-                                <div className="text-xl font-black uppercase mb-6">
+                                <div className="text-xl font-black uppercase mb-4">
                                     {pendingCommand.intent === "ADD_SET" && `Registrar ${pendingCommand.params.reps} reps x ${pendingCommand.params.weight} kg`}
                                     {pendingCommand.intent === "ADD_EXERCISE" && `Añadir ${pendingCommand.params.exerciseName}`}
                                     {pendingCommand.intent === "COUNTER" && `Sumar ${pendingCommand.params.count} ${pendingCommand.params.type}`}
                                     {pendingCommand.intent === "SET_WORKOUT_NAME" && `Nombre: ${pendingCommand.params.name}`}
                                 </div>
+                                <p className="text-[10px] text-white/40 uppercase font-bold mb-6 italic">Diga "Sí" para confirmar o "No" para cancelar</p>
                                 <div className="flex gap-4">
                                     <button onClick={() => setPendingCommand(null)} className="flex-1 py-4 bg-white/5 rounded-2xl font-black uppercase text-xs border border-white/10">Corregir</button>
                                     <button onClick={() => executeCommand(pendingCommand)} className="flex-1 py-4 bg-shred-neon text-black rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2">
