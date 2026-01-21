@@ -3,7 +3,7 @@
 import { useVoice } from "@/lib/hooks/useVoice";
 import { useStore } from "@/lib/store";
 import { Mic, MicOff, X, Check, RotateCcw, Volume2, VolumeX } from "lucide-react";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { ParsedCommand } from "@/lib/voiceParser";
 
@@ -23,7 +23,8 @@ export function VoiceControl() {
             case "ADD_EXERCISE":
                 if (!store.activeWorkout) {
                     startWorkout("Entrenamiento Voz");
-                    setTimeout(() => addExerciseToActive(cmd.params.exerciseId, cmd.params.exerciseName), 100);
+                    // Defer exercise addition slightly to allow workout start to propagate
+                    setTimeout(() => addExerciseToActive(cmd.params.exerciseId, cmd.params.exerciseName), 200);
                 } else {
                     addExerciseToActive(cmd.params.exerciseId, cmd.params.exerciseName);
                 }
@@ -34,9 +35,9 @@ export function VoiceControl() {
                     const entries = store.activeWorkout.entries;
                     const lastEntry = entries[entries.length - 1];
                     addSetToEntry(lastEntry.id, cmd.params);
-                    if (isAudioMode) speak(`Registrado ${cmd.params.reps} con ${cmd.params.weight} kilos`);
+                    if (isAudioMode) speak(`Registrado ${cmd.params.reps} por ${cmd.params.weight} kilos`);
                 } else {
-                    if (isAudioMode) speak("Primero dime qué ejercicio estas haciendo");
+                    if (isAudioMode) speak("Dime primero qué ejercicio estás haciendo");
                 }
                 break;
             case "UNDO":
@@ -46,7 +47,7 @@ export function VoiceControl() {
             case "COUNTER":
                 if (!store.activeWorkout) startWorkout("Entrenamiento Voz");
                 incrementCounter(cmd.params.type, cmd.params.count);
-                if (isAudioMode) speak(`${cmd.params.count} ${cmd.params.type === 'squats' ? 'sentadillas' : 'abdominales'} registrados`);
+                if (isAudioMode) speak(`${cmd.params.count} registrados`);
                 break;
             case "SET_WORKOUT_NAME":
                 updateWorkoutName(cmd.params.name);
@@ -54,13 +55,14 @@ export function VoiceControl() {
                 break;
             case "FINISH_WORKOUT":
                 finishWorkout();
-                if (isAudioMode) speak("Entrenamiento finalizado");
+                if (isAudioMode) speak("Entrenamiento guardado");
                 break;
         }
         setPendingCommand(null);
     }, [store.activeWorkout, isAudioMode, addExerciseToActive, addSetToEntry, undoLastSet, incrementCounter, finishWorkout, updateWorkoutName, startWorkout]);
 
     const handleCommand = useCallback((command: ParsedCommand) => {
+        // 1. Voice-based confirmation for a pending command
         if (pendingCommand) {
             if (command.intent === "CONFIRM") {
                 executeCommand(pendingCommand);
@@ -73,18 +75,17 @@ export function VoiceControl() {
             }
         }
 
-        const directIntents = ["START_WORKOUT", "UNDO", "FINISH_WORKOUT", "COUNTER"];
-        if (directIntents.includes(command.intent)) {
-            executeCommand(command);
-            return;
-        }
+        // 2. Direct execution for non-destructive commands to ensure interaction
+        const directIntents = ["START_WORKOUT", "UNDO", "FINISH_WORKOUT", "COUNTER", "ADD_EXERCISE", "ADD_SET"];
 
-        if (command.intent === "ADD_SET" || command.intent === "ADD_EXERCISE") {
+        if (directIntents.includes(command.intent)) {
+            // Execute immediately to avoid "app does nothing" perception
+            executeCommand(command);
+
+            // Still set it as pending visually for a moment so the user sees what happened
             setPendingCommand(command);
-            if (isAudioMode) {
-                if (command.intent === "ADD_SET") speak(`¿Confirmo ${command.params.reps} reps con ${command.params.weight} kg?`);
-                if (command.intent === "ADD_EXERCISE") speak(`¿Confirmo ejercicio ${command.params.exerciseName}?`);
-            }
+            setTimeout(() => setPendingCommand(null), 3000);
+            return;
         }
     }, [pendingCommand, isAudioMode, executeCommand]);
 
@@ -139,9 +140,9 @@ export function VoiceControl() {
                                 <div className="text-amber-500 mb-4 flex justify-center"><VolumeX size={48} /></div>
                                 <h3 className="text-xl font-black uppercase mb-2">Limitación de Apple</h3>
                                 <p className="text-sm text-white/60">
-                                    El sistema de voz de iOS no funciona en modo PWA (icono escritorio).
+                                    El sistema de voz de iOS no funciona en modo PWA.
                                     <br /><br />
-                                    Para usar la voz, abre **Safari** directamente y entra en la web.
+                                    Abre **Safari** directamente para usar la voz.
                                 </p>
                             </div>
                         ) : (
@@ -164,17 +165,16 @@ export function VoiceControl() {
                                                 {error}
                                             </div>
                                             <div className="text-left bg-white/5 p-4 rounded-xl border border-white/5">
-                                                <p className="text-[10px] font-black uppercase text-white/40 mb-2">Pasos para arreglarlo:</p>
+                                                <p className="text-[10px] font-black uppercase text-white/40 mb-2">Troubleshooting:</p>
                                                 <ul className="text-[11px] text-white/60 space-y-2 list-disc pl-4">
-                                                    <li>Asegúrate de estar en **Safari** (no PWA/Escritorio).</li>
-                                                    <li>Ve a **Ajustes {'>'} Teclado** y activa **Dictado**.</li>
-                                                    <li>Ve a **Ajustes {'>'} Privacidad {'>'} Reconocimiento de voz** y permite Safari.</li>
-                                                    <li>Recarga la página de la aplicación.</li>
+                                                    <li>Usa **Safari** (No icono escritorio).</li>
+                                                    <li>Activa **Dictado** en Ajustes.</li>
+                                                    <li>Recarga la página.</li>
                                                 </ul>
                                             </div>
                                         </div>
                                     ) : (
-                                        <p className="text-lg font-bold text-white/60 italic min-h-[3rem]">
+                                        <p className="text-lg font-bold text-white/60 italic min-h-[3rem] px-4">
                                             "{lastTranscript || "Pulsa abajo para hablar..."}"
                                         </p>
                                     )}
@@ -184,20 +184,14 @@ export function VoiceControl() {
 
                         {pendingCommand && pendingCommand.intent !== "UNKNOWN" && (
                             <div className="shred-card w-full border-shred-neon/50 animate-in slide-in-from-bottom duration-300">
-                                <div className="text-[10px] uppercase font-black text-shred-neon tracking-widest mb-2">Comando Interpretado</div>
+                                <div className="text-[10px] uppercase font-black text-shred-neon tracking-widest mb-2">Acción Ejecutada</div>
                                 <div className="text-xl font-black uppercase mb-4">
-                                    {pendingCommand.intent === "ADD_SET" && `Registrar ${pendingCommand.params.reps} reps x ${pendingCommand.params.weight} kg`}
-                                    {pendingCommand.intent === "ADD_EXERCISE" && `Añadir ${pendingCommand.params.exerciseName}`}
-                                    {pendingCommand.intent === "COUNTER" && `Sumar ${pendingCommand.params.count} ${pendingCommand.params.type}`}
-                                    {pendingCommand.intent === "SET_WORKOUT_NAME" && `Nombre: ${pendingCommand.params.name}`}
+                                    {pendingCommand.intent === "ADD_SET" && `Registrado ${pendingCommand.params.reps} x ${pendingCommand.params.weight} kg`}
+                                    {pendingCommand.intent === "ADD_EXERCISE" && `Añadido ${pendingCommand.params.exerciseName}`}
+                                    {pendingCommand.intent === "UNDO" && "Última serie deshecha"}
+                                    {pendingCommand.intent === "COUNTER" && "Contador actualizado"}
                                 </div>
-                                <p className="text-[10px] text-white/40 uppercase font-bold mb-6 italic">Diga "Sí" para confirmar o "No" para cancelar</p>
-                                <div className="flex gap-4">
-                                    <button onClick={() => setPendingCommand(null)} className="flex-1 py-4 bg-white/5 rounded-2xl font-black uppercase text-xs border border-white/10">Corregir</button>
-                                    <button onClick={() => executeCommand(pendingCommand)} className="flex-1 py-4 bg-shred-neon text-black rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2">
-                                        <Check size={18} /> Confirmar
-                                    </button>
-                                </div>
+                                <button onClick={() => { undoLastSet(); setPendingCommand(null); }} className="w-full py-4 bg-white/5 rounded-2xl font-black uppercase text-xs border border-white/10">Corregir / Deshacer</button>
                             </div>
                         )}
                     </div>
@@ -215,9 +209,6 @@ export function VoiceControl() {
                         >
                             {isListening ? "Suelta para procesar" : "Mantén para hablar"}
                         </button>
-                        <p className="text-center mt-4 text-[10px] font-bold text-white/20 uppercase tracking-widest">
-                            Prueba: "70 kilos por 10" o "Ejercicio Press Banca"
-                        </p>
                     </div>
                 </div>
             )}

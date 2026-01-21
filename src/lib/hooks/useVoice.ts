@@ -25,6 +25,7 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
     const recognitionRef = useRef<any>(null);
     const isContinuousRef = useRef(options.continuous);
     const onCommandRef = useRef(onCommand);
+    const isStartingRef = useRef(false);
 
     useEffect(() => {
         isContinuousRef.current = options.continuous;
@@ -57,6 +58,7 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
         recognition.interimResults = true;
 
         recognition.onstart = () => {
+            isStartingRef.current = false;
             setState(s => ({ ...s, isListening: true, error: null }));
         };
 
@@ -79,19 +81,26 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
 
                 setTimeout(() => {
                     setState(s => ({ ...s, isProcessing: false }));
-                    if (isContinuousRef.current && recognitionRef.current) {
+                    if (isContinuousRef.current && recognitionRef.current && !isStartingRef.current) {
                         try {
+                            isStartingRef.current = true;
                             recognitionRef.current.start();
                         } catch (e) {
+                            isStartingRef.current = false;
                             console.warn("Auto-restart failed", e);
                         }
                     }
-                }, 400);
+                }, 300);
             }
         };
 
         recognition.onerror = (event: any) => {
+            isStartingRef.current = false;
             let errorMessage = event.error;
+
+            // Ignore 'aborted' error if it's during a normal lifecycle or manual stop
+            if (event.error === "aborted") return;
+
             if (event.error === "not-allowed") errorMessage = "Permiso denegado (Ajustes > Privacidad > Micro)";
             if (event.error === "service-not-allowed") errorMessage = "Dictado desactivado (Ajustes > Gen > Teclado > Dictado)";
             if (event.error === "no-speech") errorMessage = "No se detectó voz";
@@ -100,12 +109,13 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
         };
 
         recognition.onend = () => {
+            isStartingRef.current = false;
             setState(s => ({ ...s, isListening: false }));
         };
 
         recognitionRef.current = recognition;
         return recognition;
-    }, []); // Removed onCommand dependency because we use onCommandRef
+    }, []);
 
     const startListening = useCallback(() => {
         if (state.isPWAOnIOS) {
@@ -113,33 +123,38 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
             return;
         }
 
+        if (isStartingRef.current || state.isListening) return;
+
         const rec = initRecognition();
-        if (rec && !state.isListening) {
+        if (rec) {
             try {
+                isStartingRef.current = true;
                 rec.start();
             } catch (e) {
-                console.error("Start listening error", e);
-                setState(s => ({ ...s, error: "Error al iniciar micrófono" }));
+                isStartingRef.current = false;
+                if (!(e as any).message?.includes("already started")) {
+                    setState(s => ({ ...s, error: "Error al iniciar micrófono" }));
+                }
             }
         }
     }, [state.isListening, state.isPWAOnIOS, initRecognition]);
 
     const stopListening = useCallback(() => {
-        if (recognitionRef.current && state.isListening) {
-            recognitionRef.current.stop();
+        isStartingRef.current = false;
+        if (recognitionRef.current) {
+            try {
+                recognitionRef.current.stop();
+            } catch (e) { }
         }
-    }, [state.isListening]);
+    }, []);
 
     const speak = useCallback((text: string) => {
         if (!window.speechSynthesis) return;
-
         window.speechSynthesis.cancel();
-
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = "es-ES";
         utterance.rate = 1.1;
         utterance.pitch = 1.0;
-
         window.speechSynthesis.speak(utterance);
     }, []);
 
