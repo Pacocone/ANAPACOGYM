@@ -136,8 +136,19 @@ export function VoiceControl() {
                                         {error ? "Fallo de Voz" : isListening ? "Escuchando..." : isProcessing ? "Procesando..." : "Listo para hablar"}
                                     </h2>
                                     {error ? (
-                                        <div className="text-red-500 font-bold uppercase tracking-widest text-xs px-4 py-2 bg-red-500/10 rounded-lg">
-                                            Error: {error}
+                                        <div className="space-y-4">
+                                            <div className="text-red-500 font-bold uppercase tracking-widest text-xs px-4 py-2 bg-red-500/10 rounded-lg">
+                                                {error}
+                                            </div>
+                                            <div className="text-left bg-white/5 p-4 rounded-xl border border-white/5">
+                                                <p className="text-[10px] font-black uppercase text-white/40 mb-2">Pasos para arreglarlo:</p>
+                                                <ul className="text-[11px] text-white/60 space-y-2 list-disc pl-4">
+                                                    <li>Asegúrate de estar en **Safari** (no PWA/Escritorio).</li>
+                                                    <li>Ve a **Ajustes {'>'} Teclado** y activa **Dictado**.</li>
+                                                    <li>Ve a **Ajustes {'>'} Privacidad {'>'} Reconocimiento de voz** y permite Safari.</li>
+                                                    <li>Recarga la página de la aplicación.</li>
+                                                </ul>
+                                            </div>
                                         </div>
                                     ) : (
                                         <p className="text-lg font-bold text-white/60 italic min-h-[3rem]">

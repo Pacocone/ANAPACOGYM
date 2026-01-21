@@ -84,7 +84,8 @@ export function useVoice(onCommand?: (command: ParsedCommand) => void, options: 
 
         recognition.onerror = (event: any) => {
             let errorMessage = event.error;
-            if (event.error === "not-allowed") errorMessage = "Permiso de micrófono denegado";
+            if (event.error === "not-allowed") errorMessage = "Permiso denegado (Ajustes > Privacidad > Micro)";
+            if (event.error === "service-not-allowed") errorMessage = "Dictado desactivado (Ajustes > Gen > Teclado > Dictado)";
             if (event.error === "no-speech") errorMessage = "No se detectó voz";
 
             setState(s => ({ ...s, isListening: false, error: errorMessage }));
