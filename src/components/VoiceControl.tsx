@@ -3,38 +3,30 @@
 import { useVoice } from "@/lib/hooks/useVoice";
 import { useStore } from "@/lib/store";
 import { Mic, MicOff, X, Check, RotateCcw, Volume2, VolumeX } from "lucide-react";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { ParsedCommand } from "@/lib/voiceParser";
 
 export function VoiceControl() {
-    const { store, addExerciseToActive, addSetToEntry, undoLastSet, incrementCounter, finishWorkout, updateWorkoutName, updateUser } = useStore();
+    const { store, addExerciseToActive, addSetToEntry, undoLastSet, incrementCounter, finishWorkout, updateWorkoutName, updateUser, startWorkout } = useStore();
     const [showModal, setShowModal] = useState(false);
+    const [pendingCommand, setPendingCommand] = useState<ParsedCommand | null>(null);
+
     const isAudioMode = store.user.audioFeedbackEnabled ?? false;
     const isContinuous = store.user.voiceEnabled ?? false;
-    const [pendingCommand, setPendingCommand] = useState<ParsedCommand | null>(null);
 
     const setIsAudioMode = (val: boolean) => updateUser({ ...store.user, audioFeedbackEnabled: val });
     const setIsContinuous = (val: boolean) => updateUser({ ...store.user, voiceEnabled: val });
 
-    const handleCommand = useCallback((command: ParsedCommand) => {
-        setPendingCommand(command);
-
-        // Auto-execute session control if high confidence or clear
-        if (command.intent === "START_WORKOUT" || command.intent === "UNDO") {
-            executeCommand(command);
-        } else if (isAudioMode) {
-            if (command.intent === "ADD_SET") speak(`¿Confirmo ${command.params.reps} con ${command.params.weight}?`);
-            if (command.intent === "ADD_EXERCISE") speak(`¿Confirmo ejercicio ${command.params.exerciseName}?`);
-        }
-    }, [isAudioMode]);
-
-    const { isListening, isProcessing, lastTranscript, error, notSupported, isPWAOnIOS, startListening, stopListening, speak } = useVoice(handleCommand, { continuous: isContinuous });
-
-    const executeCommand = (cmd: ParsedCommand) => {
+    const executeCommand = useCallback((cmd: ParsedCommand) => {
         switch (cmd.intent) {
             case "ADD_EXERCISE":
-                addExerciseToActive(cmd.params.exerciseId, cmd.params.exerciseName);
+                if (!store.activeWorkout) {
+                    startWorkout("Entrenamiento Voz");
+                    setTimeout(() => addExerciseToActive(cmd.params.exerciseId, cmd.params.exerciseName), 100);
+                } else {
+                    addExerciseToActive(cmd.params.exerciseId, cmd.params.exerciseName);
+                }
                 if (isAudioMode) speak(`Añadido ${cmd.params.exerciseName}`);
                 break;
             case "ADD_SET":
@@ -43,6 +35,8 @@ export function VoiceControl() {
                     const lastEntry = entries[entries.length - 1];
                     addSetToEntry(lastEntry.id, cmd.params);
                     if (isAudioMode) speak(`Registrado ${cmd.params.reps} con ${cmd.params.weight} kilos`);
+                } else {
+                    if (isAudioMode) speak("Primero dime qué ejercicio estas haciendo");
                 }
                 break;
             case "UNDO":
@@ -50,6 +44,7 @@ export function VoiceControl() {
                 if (isAudioMode) speak("Deshecho");
                 break;
             case "COUNTER":
+                if (!store.activeWorkout) startWorkout("Entrenamiento Voz");
                 incrementCounter(cmd.params.type, cmd.params.count);
                 if (isAudioMode) speak(`${cmd.params.count} ${cmd.params.type === 'squats' ? 'sentadillas' : 'abdominales'} registrados`);
                 break;
@@ -63,13 +58,42 @@ export function VoiceControl() {
                 break;
         }
         setPendingCommand(null);
-    };
+    }, [store.activeWorkout, isAudioMode, addExerciseToActive, addSetToEntry, undoLastSet, incrementCounter, finishWorkout, updateWorkoutName, startWorkout]);
 
-    if (notSupported) return null;
+    const handleCommand = useCallback((command: ParsedCommand) => {
+        if (pendingCommand) {
+            if (command.intent === "CONFIRM") {
+                executeCommand(pendingCommand);
+                return;
+            }
+            if (command.intent === "REJECT") {
+                setPendingCommand(null);
+                if (isAudioMode) speak("Cancelado");
+                return;
+            }
+        }
+
+        const directIntents = ["START_WORKOUT", "UNDO", "FINISH_WORKOUT", "COUNTER"];
+        if (directIntents.includes(command.intent)) {
+            executeCommand(command);
+            return;
+        }
+
+        if (command.intent === "ADD_SET" || command.intent === "ADD_EXERCISE") {
+            setPendingCommand(command);
+            if (isAudioMode) {
+                if (command.intent === "ADD_SET") speak(`¿Confirmo ${command.params.reps} reps con ${command.params.weight} kg?`);
+                if (command.intent === "ADD_EXERCISE") speak(`¿Confirmo ejercicio ${command.params.exerciseName}?`);
+            }
+        }
+    }, [pendingCommand, isAudioMode, executeCommand]);
+
+    const { isListening, isProcessing, lastTranscript, error, notSupported, isPWAOnIOS, startListening, stopListening, speak } = useVoice(handleCommand, { continuous: isContinuous });
+
+    if (notSupported && !isPWAOnIOS) return null;
 
     return (
         <>
-            {/* Trigger Button */}
             <button
                 onClick={() => setShowModal(true)}
                 className="fixed bottom-24 right-6 w-16 h-16 rounded-full bg-shred-neon text-black flex items-center justify-center shadow-lg shadow-shred-neon/40 animate-bounce active:scale-95 z-50"
@@ -77,7 +101,6 @@ export function VoiceControl() {
                 <Mic size={32} />
             </button>
 
-            {/* Voice Interface Modal */}
             {showModal && (
                 <div className="fixed inset-0 bg-black/95 z-[200] flex flex-col p-6 animate-in fade-in zoom-in duration-300">
                     <div className="flex justify-between items-center mb-10">

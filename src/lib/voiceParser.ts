@@ -1,7 +1,7 @@
 import { EXERCISES, Exercise } from "./data/exercises";
 
 export interface ParsedCommand {
-    intent: "START_WORKOUT" | "FINISH_WORKOUT" | "SET_WORKOUT_NAME" | "ADD_EXERCISE" | "ADD_SET" | "UNDO" | "DELETE_EXERCISE" | "SUMMARY" | "REST" | "WARMUP" | "COUNTER" | "STAY" | "UNKNOWN";
+    intent: "START_WORKOUT" | "FINISH_WORKOUT" | "SET_WORKOUT_NAME" | "ADD_EXERCISE" | "ADD_SET" | "UNDO" | "DELETE_EXERCISE" | "SUMMARY" | "REST" | "WARMUP" | "COUNTER" | "STAY" | "CONFIRM" | "REJECT" | "UNKNOWN";
     params?: any;
     raw: string;
 }
@@ -75,6 +75,13 @@ export class VoiceCommandParser {
 
     static parse(text: string): ParsedCommand {
         const input = text.toLowerCase().trim();
+
+        // 0. Confirmations / Rejections
+        const confirmWords = ["sí", "si", "vale", "confirmar", "confirmado", "claro", "ok", "correcto", "venga"];
+        const rejectWords = ["no", "mal", "cancela", "cancelar", "error", "corregir", "quitar"];
+
+        if (confirmWords.includes(input)) return { intent: "CONFIRM", raw: text };
+        if (rejectWords.includes(input)) return { intent: "REJECT", raw: text };
 
         // 1. Session Control
         if (input.includes("nuevo entrenamiento") || input.includes("empezar entrenamiento")) {
