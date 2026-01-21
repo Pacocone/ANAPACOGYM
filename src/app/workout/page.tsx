@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { ExerciseIcon } from "@/components/ui/ExerciseIcon";
 import { cn } from "@/lib/utils";
 
-const CATEGORIES = ["Todos", "Pecho", "Espalda", "Piernas", "Hombros", "Brazos", "Core", "Cardio", "Mancuernas", "Movilidad", "CABLE MAQUINA"] as const;
+const CATEGORIES = ["Todos", "Brazos", "CABLE MAQUINA", "Cardio", "Core", "Espalda", "Hombros", "Mancuernas", "Movilidad", "Pecho", "Piernas"] as const;
 
 export default function WorkoutPage() {
     const { store, addExerciseToActive, addSetToEntry, finishWorkout, isInitialized, getLastSessionData, discardActiveWorkout, updateWorkoutName } = useStore();

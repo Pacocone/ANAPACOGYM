@@ -197,4 +197,4 @@ export const EXERCISES: Exercise[] = [
   },
 ];
 
-export const CATEGORIES = ["Pecho", "Espalda", "Hombros", "Brazos", "Piernas", "Core", "Cardio", "Movilidad", "Mancuernas", "CABLE MAQUINA"];
+export const CATEGORIES = ["Brazos", "CABLE MAQUINA", "Cardio", "Core", "Espalda", "Hombros", "Mancuernas", "Movilidad", "Pecho", "Piernas"];

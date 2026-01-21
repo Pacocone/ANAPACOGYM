@@ -7,7 +7,7 @@ import { useState } from "react";
 import { ExerciseIcon } from "@/components/ui/ExerciseIcon";
 import { cn } from "@/lib/utils";
 
-const CATEGORIES = ["Todos", "Pecho", "Espalda", "Piernas", "Hombros", "Brazos", "Core", "Cardio", "Mancuernas", "CABLE MAQUINA"] as const;
+const CATEGORIES = ["Todos", "Brazos", "CABLE MAQUINA", "Cardio", "Core", "Espalda", "Hombros", "Mancuernas", "Movilidad", "Pecho", "Piernas"] as const;
 
 export default function ExercisesPage() {
     const { addExerciseToActive, store } = useStore();

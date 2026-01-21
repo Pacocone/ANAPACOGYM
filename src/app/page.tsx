@@ -17,7 +17,7 @@ export default function Home() {
       <section>
         <h1 className="shred-title opacity-60 uppercase text-sm tracking-widest mb-2">Resumen</h1>
         <div className="flex items-center justify-between">
-          <h2 className="text-4xl font-black uppercase tracking-tight">HOLA, PACO</h2>
+          <h2 className="text-4xl font-black uppercase tracking-tight">PAPISGYM</h2>
         </div>
       </section>
 
