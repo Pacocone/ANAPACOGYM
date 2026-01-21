@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ExerciseIcon } from "@/components/ui/ExerciseIcon";
 import { cn } from "@/lib/utils";
+import { VoiceControl } from "@/components/VoiceControl";
 
 const CATEGORIES = ["Todos", "Brazos", "CABLE MAQUINA", "Cardio", "Core", "Espalda", "Hombros", "Mancuernas", "Movilidad", "Pecho", "Piernas"] as const;
 
@@ -362,6 +363,7 @@ export default function WorkoutPage() {
                     </div>
                 </div>
             )}
+            <VoiceControl />
         </div>
     );
 }

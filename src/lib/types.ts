@@ -35,6 +35,8 @@ export interface UserProfile {
     heightCm: number;
     weightKg: number;
     units: "kg" | "lbs";
+    voiceEnabled?: boolean;
+    audioFeedbackEnabled?: boolean;
 }
 
 export interface AppStore {

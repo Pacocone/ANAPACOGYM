@@ -151,6 +151,38 @@ export function useStore() {
         });
     };
 
+    const undoLastSet = () => {
+        if (!store.activeWorkout || store.activeWorkout.entries.length === 0) return;
+        const newWorkout = { ...store.activeWorkout };
+        // Find last entry with sets
+        for (let i = newWorkout.entries.length - 1; i >= 0; i--) {
+            const entry = newWorkout.entries[i];
+            if (entry.sets.length > 0) {
+                entry.sets.pop();
+                break;
+            }
+        }
+
+        // Recalculate totals
+        newWorkout.totalSets = newWorkout.entries.reduce((sum, e) => sum + e.sets.length, 0);
+        newWorkout.totalVolume = newWorkout.entries.reduce((sum, e) => {
+            return sum + e.sets.reduce((esum, s) => esum + ((s.weight || 0) * (s.reps || 1)), 0);
+        }, 0);
+
+        save({ ...store, activeWorkout: newWorkout });
+    };
+
+    const incrementCounter = (type: "squats" | "abs", count: number) => {
+        if (!store.activeWorkout) return;
+        save({
+            ...store,
+            activeWorkout: {
+                ...store.activeWorkout,
+                [type === "squats" ? "squatsCount" : "absCount"]: (store.activeWorkout[type === "squats" ? "squatsCount" : "absCount"] || 0) + count
+            }
+        });
+    };
+
     const repeatWorkout = (workoutId: string) => {
         const sourceWorkout = store.history.find((w) => w.id === workoutId);
         if (!sourceWorkout) return;
@@ -184,6 +216,8 @@ export function useStore() {
         repeatWorkout,
         addExerciseToActive,
         addSetToEntry,
+        undoLastSet,
+        incrementCounter,
         deleteWorkout,
         discardActiveWorkout,
         finishWorkout,
